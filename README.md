@@ -1,9 +1,9 @@
 # Model Swapping
-## Authors: Patrick Lavin, Jonathan Beard
+### Authors: Patrick Lavin, Jonathan Beard
 
 This repository contains all code and data needed to reproduce the results and plots from our PMBS 2020 submission. 
 
-You can find information on using the simulator in `ModelSwapping.ipynb'. You can find the code to produce our plots in 'CollectDataPMBS20.ipybb'. This simulator is derived from [SVE-Cachesim](https://github.com/ARM-software/Methodology_for_ArmIE_SVE/tree/master/sve-cachesim). 
+You can find information on using the simulator in `ModelSwapping.ipynb`. You can find the code to produce our plots in `CollectDataPMBS20.ipybb`. This simulator is derived from [SVE-Cachesim](https://github.com/ARM-software/Methodology_for_ArmIE_SVE/tree/master/sve-cachesim). 
 
 You can find our custom version of [Meabo](https://github.com/ARM-software/meabo) in `trace-generation/`
 
