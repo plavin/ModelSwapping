@@ -36,7 +36,7 @@ def process_file(exefile, tracefile):
         dwarfinfo = elffile.get_dwarf_info()
 
         trace = sim.traceToInts(tracefile, None).IP
-       
+
         counts = {}
         skip1 = 0
         skip2 = 0
@@ -75,7 +75,7 @@ def process_file(exefile, tracefile):
         print('\nDynamic Counts: {} (total: {})'.format(counts, len(trace)))
         print('Static Counts: {} (total: {})'.format(unq, len(np.unique(trace))))
         range = {}
-        strange = {} 
+        strange = {}
         for key in unqlist:
             if key !='unknown':
                 vals = sorted(unqlist[key])

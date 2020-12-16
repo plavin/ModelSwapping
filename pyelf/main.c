@@ -1,7 +1,10 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
+#include "vec.h"
 
+#ifdef INLINE
+__attribute__((always_inline)) inline
 void vadd (double *dst, double *src1, double *src2, int sz)
 {
     for (int i = 0; i < sz; i++) {
@@ -9,12 +12,14 @@ void vadd (double *dst, double *src1, double *src2, int sz)
     }
 }
 
+__attribute__((always_inline)) inline
 void vmul (double *dst, double *src1, double *src2, int sz)
 {
     for (int i = 0; i < sz; i++) {
         dst[i] = src1[i] * src2[i];
     }
 }
+#endif
 
 int main (int argv, char ** argc)
 {
