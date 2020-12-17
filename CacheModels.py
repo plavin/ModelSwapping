@@ -31,6 +31,7 @@ import enum
 import json
 import PhaseDetector
 from random import random
+from AppendArray import AppendArray
 
 ##############################
 # Alternate Cache Models     #
@@ -256,8 +257,8 @@ class LSTMCacheModel(SwapModel):
         self.deltas_dtype = np.dtype([('d{}'.format(i+1), np.uint64) for i in self.ndelta])
         self.isHit_dtype = np.dtype([('isHit', np.bool_)])
         
-        self.deltas = _AppendArray(start_len, self.deltas_type)
-        self.isHit = _AppendArray(start_len, self.isHit_dtype)
+        self.deltas = AppendArray(start_len, self.deltas_type)
+        self.isHit = AppendArray(start_len, self.isHit_dtype)
         
         self.addr_history = collections.deque(maxlen=self.ndelta)
         [self.addr_history.append(0) for i in range(self.ndelta)]
@@ -356,7 +357,7 @@ class BaseCache:
         self.phase = -1
         self.phases=None
         
-        self.cache_trace = _AppendArray(10000, self.trace_dtype)
+        self.cache_trace = AppendArray(10000, self.trace_dtype)
         self.full_trace = True
         
     def __str__(self):
@@ -454,7 +455,7 @@ class Phase():
         self.models = [I() for I in model_classes]
         self.ntrain = 0 # phases used to train these models
         self.which_model = None # Once trained, the model that we chose as best 
-        self.score_history = _AppendArray(10000, 
+        self.score_history = AppendArray(10000, 
                                           np.dtype([('model{}'.format(i), np.float32) for i in range(len(model_classes))]))
         
     def get(self, params):
@@ -489,8 +490,8 @@ class SmartCache(BaseCache):
             ('model{}'.format(i), np.uint64) for i in range(len(models))
         ])
 
-        self.history     = _AppendArray(10000, self.history_dtype)
-        self.predictions = _AppendArray(10000, self.predictions_dtype)
+        self.history     = AppendArray(10000, self.history_dtype)
+        self.predictions = AppendArray(10000, self.predictions_dtype)
 
         # Which models to train and evaluate
         self.models = models
@@ -501,7 +502,7 @@ class SmartCache(BaseCache):
         
         self.near_hist_dtype = np.dtype([('isNear', np.uint64)])
                 
-        self.near_hist = _AppendArray(10000, self.near_hist_dtype)
+        self.near_hist = AppendArray(10000, self.near_hist_dtype)
 
             
     # Train models, return -1 if we need more time to train this phase
@@ -764,14 +765,14 @@ def parse_cache_model(model, swap={}):
     return nlevels, cache_model, fetch_data
 
 class CacheHierarchy:
-    def __init__(self, modelfile, block_size = 10000, swap={}):
+    def __init__(self, modelfile, block_size = 10000, swap={}, binary_filename=None):
         nlevels, cache_model, fetch_data = parse_cache_model(modelfile, swap=swap)
 
         self.nlevels     = nlevels
         self.cache_model = cache_model
         self.fetch_data  = fetch_data
 
-        self.pd = PhaseDetector.PhaseDetector(interval_len=block_size, stable_min=5)
+        self.pd = PhaseDetector.PhaseDetector(interval_len=block_size, stable_min=5, binary_filename=binary_filename)
         for i, cache in enumerate(cache_model):
             self.pd.register_listener(cache.phase_notify)
         
@@ -786,7 +787,7 @@ class CacheHierarchy:
         pf_str = '  Prefetch level: {}'.format(self.fetch_data['fetch_level'])
         return 'CacheHierarchy:\n  Num Levels: {}\n{}{}'.format(self.nlevels, cache_str, pf_str)
     
-class _AppendArray():
+class _AppendArrayGarbage():
     """
     A wrapper around a numpy array that supports the append operation, but does it 
     without making copies. It does this by doubling the size of the array every time
