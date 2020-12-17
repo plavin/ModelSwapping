@@ -1,28 +1,22 @@
 import sys
-
-# If pyelftools is not installed, the example can also run from the root or
-# examples/ dir of the source distribution.
-sys.path[0:0] = ['.', '..']
 sys.path.insert(1, '../')
 import sveCacheSim as sim
 import numpy as np
+from elftools.elf.elffile import ELFFile #conda install pyelftools
 
-from elftools.common.py3compat import maxint, bytes2str
-from elftools.dwarf.descriptions import describe_form_class
-from elftools.elf.elffile import ELFFile
-from typing import List
+# HOW TO USE:
+# An example is at the bottom of this file, in __main__.
+# Basically, you just need to create a DWARFMap object by giving it
+# the executable with dwarf info relating to your trace (e.g. compile with -g).
+# Then, you can pass a trace into the classify function and you will get a
+# dictonary back. This dict has keys that are function names and values that
+# is the number of instructions from the trace corresponding to each function.
 
-def print_dict(d):
-    for k in d:
-        print('{} ->\n\t{}'.format(k,d[k]))
-
-if len(sys.argv) < 3:
-    print('Usage:\n  python3 {} <exefile> <tracefile>'.format(sys.argv[0]))
-    exit()
-
-offset_map = {}
-
-
+# A range represents a range of 64 bit addresses. Each one will be named for a
+# function. Each can optionally hold a reference, which is the offset of a DIE
+# that contains the function name associated with this range. This allows us
+# to fill in the name later, if we don't know it right away (as is the case
+# with inlined functions)
 class range:
     def __init__(self, name:str, start:np.uint64, end:np.uint64, ref:np.int64=-1):
         self.name = name
@@ -31,99 +25,137 @@ class range:
         self.ref = ref
         self.child = []
 
-    def contains(self, new):
+    # Returns true if the range passed as an argument is completely contained within
+    # this range (inclusive) and false otherwise
+    def contains(self, new:range):
         return new.start >= self.start and new.end <= self.end
-    def has(self, addr):
+
+
+    # Returns true if the address passed as an argument is within this range (inclusive)
+    # and false otherwise
+    def has(self, addr:np.uint64):
         return addr >= self.start and addr <= self.end
+
+    # Use the map to figure out the names of inlined functions
+    def map_inlined(self, map):
+        if self.name is None:
+            self.name = map[self.ref]
+        for c in self.child:
+            c.map_inlined(map)
+
+    # Add a new range. Insert it at the narrowest possible spot, i.e. if it
+    # is contained within another range, it must be place within it.
+    def insert(self, new:range):
+        for c in self.child:
+            if c.contains(new):
+                c.insert(new)
+                return
+        self.child.append(new)
+
+    # Find the lowest/narrowest range that the address is contained in
+    def find(self, addr:np.uint64):
+        name = self.name
+        for c in self.child:
+            if c.has(addr):
+                name = c.find(addr)
+        return name
+
+    # Helper function for __str__ that lets us do indentation
     def _tostring(self, level):
         spaces = '' if level == 0 else '{}↳ '.format(' '*(level)*2)
         res = '{}{} [0x{:x} - 0x{:x}]\n'.format(spaces, self.name, self.start, self.end)
         for c in self.child:
             res = res + c._tostring(level+1)
         return res
+
     def __str__(self):
         return self._tostring(0)
 
-def insert(root:range, new:range):
-    for c in root.child:
-        if c.contains(new):
-            insert(c, new)
-            return
-    root.child.append(new)
+class DWARFMap:
+    def __init__(self, file):
+        # The root node of our tree contains all possible addresses
+        # and is named unknown, as this is what is returned when
+        # we don't have DWARF info for an address
+        self.root = range('unknown', 0,0xffffffffffffffff)
 
-def fixup(root:range, map):
-    if root.name is None:
-        root.name = map[root.ref]
-    for c in root.child:
-        fixup(c, map)
+        # Stores the offsets of all DIEs that define functions, so that we can later
+        # discern the names of inlined functions, which do not store the function
+        # name at their inlined location
+        self.offset_map = {}
 
-def find(root:range, addr:np.uint64):
-    name = root.name
-    for c in root.child:
-        if c.has(addr):
-            name = find(c, addr)
-    return name
+        # Use pyelftools to get an object containing all DWARF info
 
-root = range('unknown', 0,0xffffffffffffffff)
+        with open(sys.argv[1], 'rb') as exefile:
+            elffile = ELFFile(exefile)
+            if not elffile.has_dwarf_info():
+                print('Error: {} has no dwarf info'.format(sys.argv[1]))
+                exit()
+            dwarfinfo = elffile.get_dwarf_info()
 
-with open(sys.argv[1], 'rb') as exefile:
-    elffile = ELFFile(exefile)
-    if not elffile.has_dwarf_info():
-        print('Error: {} has no dwarf info'.format(sys.argv[1]))
+            # Iterate over every compute unit (roughtly every input .c/.cpp file)
+            for CU in dwarfinfo.iter_CUs():
+
+                # Iterate over every Debugging Information Entry and search for ones
+                # that represent subroutines
+                for DIE in CU.iter_DIEs():
+                    if DIE.tag == 'DW_TAG_inlined_subroutine':
+                        offset = DIE.attributes['DW_AT_abstract_origin'].value
+                        start  = DIE.attributes['DW_AT_low_pc'].value
+                        end    = DIE.attributes['DW_AT_low_pc'].value + DIE.attributes['DW_AT_high_pc'].value
+
+                        # Insert a node with this range in the tree. It currently has no name (None) as it was an inlined
+                        # function. We will get the name later when we find the DIE with the corresponding
+                        # offset, which this DIE lists as DW_AT_abstract_origin
+                        self.root.insert(range(None, start, end, offset))
+
+                    elif DIE.tag == 'DW_TAG_subprogram':
+
+                        # Go ahead and store the name and offset of this DIE, as it represents a function. We will need
+                        # this map later when we want to get the names of inlined functions
+                        name = DIE.attributes['DW_AT_name'].value.decode('UTF-8')
+                        self.offset_map[DIE.offset] = name
+
+                        # If the DIE has a low_pc, it should also have a high_pc. If it has neither, we
+                        # can't determine a range so we will continue
+                        if 'DW_AT_low_pc' not in DIE.attributes:
+                            continue
+                        start  = DIE.attributes['DW_AT_low_pc'].value
+                        end    = DIE.attributes['DW_AT_low_pc'].value + DIE.attributes['DW_AT_high_pc'].value
+
+                        # Insert a node with this range in the tree. If we have made it this far it means
+                        # we have a start and an end address, meaning this is a full function, and not
+                        # just a prototype.
+                        self.root.insert(range(name, start, end))
+
+            self.root.map_inlined(self.offset_map)
+
+    def classify(self, ips, counts={}):
+        if np.isscalar(ips):
+            return self.root.find(ips)
+        # Initialize counts if it is empty
+        # Subsequent calls can pass in counts and
+        # we will just add to that one.
+        if not counts:
+            counts['unknown'] = 0
+            for k in self.offset_map:
+                counts[self.offset_map[k]] = 0
+        for ip in ips:
+            counts[self.root.find(ip)] += 1
+        return counts
+
+
+if __name__ == '__main__':
+    if len(sys.argv) < 3:
+        print('Usage:\n  python3 {} <exefile> <tracefile>'.format(sys.argv[0]))
         exit()
 
-    dwarfinfo = elffile.get_dwarf_info()
-    for CU in dwarfinfo.iter_CUs():
-        for DIE in CU.iter_DIEs():
-            try:
-                if DIE.tag == 'DW_TAG_inlined_subroutine':
-                    offset = DIE.attributes['DW_AT_abstract_origin'].value
-                    start  = DIE.attributes['DW_AT_low_pc'].value
-                    end    = DIE.attributes['DW_AT_low_pc'].value + DIE.attributes['DW_AT_high_pc'].value
+    # Use sveCacheSim to load the trace
+    trace = sim.traceToInts(sys.argv[2], None).IP
+    DM = DWARFMap(sys.argv[1])
 
-                    insert(root, range(None, start, end, offset))
+    # This will attribute each IP in the trace to a function
+    counts = DM.classify(trace)
+    print(counts)
 
-                    print('  Inlined subroutine [[[off:{}]]]'.format(DIE.attributes['DW_AT_abstract_origin'].value), end='')
-                    if 'DW_AT_low_pc' in DIE.attributes:
-                        print(' [{} - {}]'.format(DIE.attributes['DW_AT_low_pc'].value, DIE.attributes['DW_AT_high_pc'].value))
-                    else:
-                        print(' COULDNT FIND RANGE')
-                elif DIE.tag == 'DW_TAG_subprogram':
-
-                    name = DIE.attributes['DW_AT_name'].value.decode('UTF-8')
-                    print('Subroutine [[[{}]]]'.format(name), end='')
-                    offset_map[DIE.offset] = name
-
-                    start  = DIE.attributes['DW_AT_low_pc'].value
-                    end    = DIE.attributes['DW_AT_low_pc'].value + DIE.attributes['DW_AT_high_pc'].value
-
-
-                    insert(root, range(name, start, end, ))
-                    #print_dict(DIE.attributes)
-                    if 'DW_AT_low_pc' in DIE.attributes:
-                        print(' [{} - {}]'.format(DIE.attributes['DW_AT_low_pc'].value, DIE.attributes['DW_AT_high_pc'].value))
-                    else:
-                        print(' COULDNT FIND RANGE of DIE offset {}'.format(DIE.offset))
-            except KeyError:
-               continue
-        #print(CU._dielist)
-        #print(CU.header)
-        cu_file = dwarfinfo.line_program_for_CU(CU)['file_entry'][0].name.decode('UTF-8')
-        print(cu_file)
-        print(offset_map)
-
-fixup(root, offset_map)
-print(root)
-
-
-trace = sim.traceToInts(sys.argv[2], None).IP
-
-counts = {}
-counts['unknown'] = 0
-for k in offset_map:
-    counts[offset_map[k]] = 0
-for ip in trace:
-    counts[find(root, ip)] += 1
-
-print(counts)
-
+    # This prints out the hierarcical ranges found in the DWARF
+    print(DM.root, end='')
