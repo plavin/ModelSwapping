@@ -1,8 +1,11 @@
 # Install DynamoRIO
 
-You need to get a version of Memtrace, we recommend using 8.0.0-1, as that is what we used for this project. 
+You need to get a version of Memtrace, we recommend using 8.0.0-1, as that is what we used for this project.
 
 Then follow these instructions to run memtrace and get a trace that this version of sve-cachesim can read
+
+
+You should also download our custom version of Meabo from [here](https://github.com/plavin/meabo).
 
 
 # Building
