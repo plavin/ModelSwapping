@@ -3,7 +3,7 @@ sys.path.insert(1, '../')
 import sveCacheSim as sim
 import numpy as np
 from elftools.elf.elffile import ELFFile #conda install pyelftools
-
+from pprint import pprint as pprint
 # HOW TO USE:
 # An example is at the bottom of this file, in __main__.
 # Basically, you just need to create a DWARFMap object by giving it
@@ -17,6 +17,10 @@ from elftools.elf.elffile import ELFFile #conda install pyelftools
 # that contains the function name associated with this range. This allows us
 # to fill in the name later, if we don't know it right away (as is the case
 # with inlined functions)
+nunknown = 0
+
+compress = True
+
 class range:
     def __init__(self, name:str, start:np.uint64, end:np.uint64, ref:np.int64=-1):
         self.name = name
@@ -30,6 +34,10 @@ class range:
     def contains(self, new:range):
         return new.start >= self.start and new.end <= self.end
 
+    # Returns true if the ranges have the same start and end, false otherwise
+    def equals(self, new:range):
+        return new.start == self.start and new.end == self.end
+
 
     # Returns true if the address passed as an argument is within this range (inclusive)
     # and false otherwise
@@ -38,11 +46,13 @@ class range:
 
     # Use the map to figure out the names of inlined functions
     def map_inlined(self, map):
+        global nunknown
         if self.name is None:
             if self.ref in map:
                 self.name = map[self.ref]
             else:
-                self.name = 'unkown2' # TODO: figure this out (try running meabo)
+                self.name = 'unknown{0:05d}'.format(nunknown) # TODO: figure this out (try running meabo)
+                nunknown += 1
         for c in self.child:
             c.map_inlined(map)
 
@@ -51,7 +61,8 @@ class range:
     def insert(self, new:range):
         for c in self.child:
             if c.contains(new):
-                c.insert(new)
+                if not c.equals(new):
+                    c.insert(new)
                 return
         self.child.append(new)
 
@@ -61,7 +72,14 @@ class range:
         for c in self.child:
             if c.has(addr):
                 name = c.find(addr)
+        if 'unknown' in name:
+            name = self.name
         return name
+
+    def remove_unknowns(self):
+        for c in self.child:
+            c.remove_unknowns()
+        self.child = [x for x in self.child if "unknown" not in x.name]
 
     # Helper function for __str__ that lets us do indentation
     def _tostring(self, level):
@@ -79,7 +97,7 @@ class DWARFMap:
         # The root node of our tree contains all possible addresses
         # and is named unknown, as this is what is returned when
         # we don't have DWARF info for an address
-        self.root = range('unknown', 0,0xffffffffffffffff)
+        self.root = range('ALL', 0,0xffffffffffffffff)
 
         # Stores the offsets of all DIEs that define functions, so that we can later
         # discern the names of inlined functions, which do not store the function
@@ -101,6 +119,9 @@ class DWARFMap:
                 # Iterate over every Debugging Information Entry and search for ones
                 # that represent subroutines
                 for DIE in CU.iter_DIEs():
+                    #print('DIE Tag: {}'.format(DIE.tag))
+                    #if 'DW_AT_abstract_origin' in DIE.attributes:
+                    #    print('  DIE [{}] has abstract origin: [{}]'.format(DIE.offset, DIE.attributes['DW_AT_abstract_origin'].value))
                     try:
                         if DIE.tag == 'DW_TAG_inlined_subroutine':
                             offset = DIE.attributes['DW_AT_abstract_origin'].value
@@ -113,7 +134,22 @@ class DWARFMap:
                             self.root.insert(range(None, start, end, offset))
 
                         elif DIE.tag == 'DW_TAG_subprogram':
-
+                            
+                            #if 'DW_AT_name' in DIE.attributes:
+                            #    print('  DIE Name: {}'.format(DIE.attributes['DW_AT_name'].value.decode('UTF-8')))
+                            #else:
+                            #    print('  DIE [unnamed]')
+                            
+                            #if 'DW_AT_low_pc' in DIE.attributes:
+                            #    print('    Range present')
+                            #else:
+                            #    if 'DW_AT_ranges' in DIE.attributes:
+                            #        print('    Range not present but DW_AT_ranges is')
+                            #    if 'DW_AT_entry_pc' in DIE.attributes:
+                            #        print('    Range not present but DW_AT_entry_pc is')
+                            #    print('    Range not present in DIE [{}]'.format(DIE.offset))
+                            #    print(DIE.attributes.keys())
+#
                             # Go ahead and store the name and offset of this DIE, as it represents a function. We will need
                             # this map later when we want to get the names of inlined functions
                             name = DIE.attributes['DW_AT_name'].value.decode('UTF-8')
@@ -131,23 +167,39 @@ class DWARFMap:
                             # just a prototype.
                             self.root.insert(range(name, start, end))
                     except KeyError:
+                        #print('Skipped DIE with tag {}'.format(DIE.tag))
                         continue #TODO figure out what this is necesseary
 
             self.root.map_inlined(self.offset_map)
 
-    def classify(self, ips, counts={}):
+            #for CU in dwarfinfo.iter_CUs():
+            #    for DIE in CU.iter_DIEs():
+            #        if DIE.offset == 8589:
+            #            print('Found DIE')
+            #            pprint(dict(DIE.attributes))
+            #        if DIE.offset == 8315:
+            #            print('Found DIE')
+            #            pprint(dict(DIE.attributes))
+            #        if 'DW_AT_low_pc' in DIE.attributes:
+            #            if DIE.attributes['DW_AT_low_pc'].value == 4203102:
+    def remove_unknowns(self):
+        self.root.remove_unknowns()
+
+    def classify(self, ips, counts=None):
         if np.isscalar(ips):
             return self.root.find(ips)
         # Initialize counts if it is empty
         # Subsequent calls can pass in counts and
         # we will just add to that one.
         if not counts:
-            counts['unknown'] = 0
+            counts = {}
+            counts['ALL'] = 0
             for k in self.offset_map:
                 counts[self.offset_map[k]] = 0
         for ip in ips:
             counts[self.root.find(ip)] += 1
         return counts
+
 
 
 if __name__ == '__main__':
@@ -157,13 +209,21 @@ if __name__ == '__main__':
 
     # Parse DWARF
     DM = DWARFMap(sys.argv[1])
+
+    # Remove unknowns
+    if compress:
+        DM.remove_unknowns()
+
     # This prints out the hierarcical ranges found in the DWARF
     print(DM.root, end='')
 
     if len(sys.argv) > 2:
         # Use sveCacheSim to load the trace
-        trace = sim.traceToInts(sys.argv[2], None).IP
-        # This will attribute each IP in the trace to a function
-        counts = DM.classify(trace)
-        print(counts)
+        try:
+            trace = sim.traceToInts(sys.argv[2], None).IP
+            # This will attribute each IP in the trace to a function
+            counts = DM.classify(trace)
+            print(counts)
+        except:
+            pass
 

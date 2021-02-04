@@ -152,20 +152,30 @@ def simulation(newmodel,
     """
 
     # These Meabo traces should come with your distribution of this code.
-    trace_list = {'small':'../tracing/traces/meabo/meabo.i125.N512.P521.L1.log',
-                  'medium':'../tracing/traces/meabo/meabo.i125.N512.P521.L2.log',
-                  'large':'../tracing/traces/meabo/meabo.i125.N1536.P521.L3.log',
+    trace_list = {'meabo_small':'../tracing/traces/meabo/meabo.i125.N512.P521.L1.log',
+                  'meabo_medium':'../tracing/traces/meabo/meabo.i125.N512.P521.L2.log',
+                  'meabo_large':'../tracing/traces/meabo/meabo.i125.N1536.P521.L3.log',
                   'pennant_small':'pennant.mp15.log',
                   'pennant_medium':'pennant.mp20.log',
                   'pennant_large':'pennant.mp22.log',
                   'lulesh_small':'lulesh.s10.i10.log',
                   'lulesh_medium':'lulesh.s10.i20.log',
                   'lulesh_large':'lulesh.s10.i30.log',
-                  'slu_steam1':'ditersol.steam1.log',
-                  'slu_steam2':'ditersol.steam2.log',
-                  'slu_orsirr_1':'ditersol.orsirr_1.log',
-                  'slu_orsirr_2':'ditersol.orsirr_2.log',
-                  'slu_osreg_1':'ditersol.osreg_1.log',
+                  'slu_steam1':'../tracing/traces/SuperLU/ditersol.steam1.log',
+                  'slu_steam2':'../tracing/traces/SuperLU/ditersol.steam2.log',
+                  'slu_orsirr_1':'../tracing/traces/SuperLU/ditersol.orsirr_1.log',
+                  'slu_orsirr_2':'../tracing/traces/SuperLU/ditersol.orsirr_2.log',
+                  'slu_orsreg_1':'../tracing/traces/SuperLU/ditersol.orsreg_1.log',
+                  'blackscholes-simdev':'../tracing/parsec-3.0/traces/simdev/memtrace.blackscholes.log',
+                  'bodytrack-simdev':'../tracing/parsec-3.0/traces/simdev/memtrace.bodytrack.log',
+                  'ferret-simdev':'../tracing/parsec-3.0/traces/simdev/memtrace.ferret.log',
+                  'fluidanimate-simdev':'../tracing/parsec-3.0/traces/simdev/memtrace.fluidanimate.log',
+                  'freqmine-simdev':'../tracing/parsec-3.0/traces/simdev/memtrace.freqmine.log',
+                  'blackscholes-simsmall':'../tracing/parsec-3.0/traces/simsmall/memtrace.blackscholes.log',
+                  'bodytrack-simsmall':'../tracing/parsec-3.0/traces/simsmall/memtrace.bodytrack.log',
+                  'ferret-simsmall':'../tracing/parsec-3.0/traces/simsmall/memtrace.ferret.log',
+                  'fluidanimate-simsmall':'../tracing/parsec-3.0/traces/simsmall/memtrace.fluidanimate.log',
+                  'freqmine-simsmall':'../tracing/parsec-3.0/traces/simsmall/memtrace.freqmine.log',
                   }
 
     # These represet the stats for a run with no model swapping.
@@ -180,9 +190,25 @@ def simulation(newmodel,
     # trace_file = 'traces/{}'.format(trace_list[trace_id])
     trace_file = trace_list[trace_id]
     
-    binary_list = {'small':'../tracing/traces/meabo/binary/meabo',
-                   'medium':'../tracing/traces/meabo/binary/meabo',
-                   'large':'../tracing/traces/meabo/binary/meabo',}
+    binary_list = {'meabo_small':'../tracing/traces/meabo/binary/meabo',
+                   'meabo_medium':'../tracing/traces/meabo/binary/meabo',
+                   'meabo_large':'../tracing/traces/meabo/binary/meabo',
+                   'slu_steam1':'../tracing/traces/SuperLU/binary/ditersol',
+                   'slu_steam2':'../tracing/traces/SuperLU/binary/ditersol',
+                   'slu_orsirr_1':'../tracing/traces/SuperLU/binary/ditersol',
+                   'slu_orsirr_2':'../tracing/traces/SuperLU/binary/ditersol',
+                   'slu_orsreg_1':'../tracing/traces/SuperLU/binary/ditersol',
+                   'blackscholes-simdev':'../tracing/parsec-3.0/binaries/blackscholes',
+                   'bodytrack-simdev':'../tracing/parsec-3.0/binaries/bodytrack',
+                   'ferret-simdev':'../tracing/parsec-3.0/binaries/ferret',
+                   'fluidanimate-simdev':'../tracing/parsec-3.0/binaries/fluidanimate',
+                   'freqmine-simdev':'../tracing/parsec-3.0/binaries/freqmine',
+                   'blackscholes-simsmall':'../tracing/parsec-3.0/binaries/blackscholes',
+                   'bodytrack-simsmall':'../tracing/parsec-3.0/binaries/bodytrack',
+                   'ferret-simsmall':'../tracing/parsec-3.0/binaries/ferret',
+                   'fluidanimate-simsmall':'../tracing/parsec-3.0/binaries/fluidanimate',
+                   'freqmine-simsmall':'../tracing/parsec-3.0/binaries/freqmine',
+                   }
     binary_filename = binary_list[trace_id] if trace_id in binary_list else None
 
     model_file = 'base-models/3-level.json'
